@@ -1,6 +1,7 @@
 import streamlit as st
 from supabase import create_client
 
+# ---------- CONFIG ----------
 st.set_page_config(page_title="Magazyn", layout="wide")
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
@@ -8,8 +9,9 @@ SUPABASE_ANON_KEY = st.secrets["SUPABASE_ANON_KEY"]
 
 supabase = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
-st.title("📦 Magazyn – zarządzanie produktami")
+st.title("📦 Magazyn – panel administracyjny")
 
+# ---------- KATEGORIE ----------
 st.header("📁 Kategorie")
 
 with st.form("add_category", clear_on_submit=True):
@@ -25,18 +27,30 @@ with st.form("add_category", clear_on_submit=True):
 categories = supabase.table("kategoria").select("*").execute().data or []
 
 if not categories:
-    st.info("Dodaj najpierw kategorię")
+    st.info("Dodaj pierwszą kategorię")
     st.stop()
 
 cat_name_to_id = {c["nazwa"]: c["id"] for c in categories}
 
 for c in categories:
     col1, col2 = st.columns([5,1])
-    col1.write(f"**{c['nazwa']}** — {c['opis']}")
-    if col2.button("🗑 Usuń kategorię", key=f"del_cat_{c['id']}"):
-        supabase.table("kategoria").delete().eq("id", c["id"]).execute()
-        st.experimental_rerun()
 
+    col1.write(f"**{c['nazwa']}** — {c['opis']}")
+
+    products_in_cat = supabase.table("produkty1") \
+        .select("id") \
+        .eq("kategoria_id", c["id"]) \
+        .execute().data
+
+    if col2.button("🗑 Usuń", key=f"del_cat_{c['id']}"):
+        if products_in_cat:
+            st.error("❌ Nie można usunąć kategorii — są do niej przypisane produkty")
+        else:
+            supabase.table("kategoria").delete().eq("id", c["id"]).execute()
+            st.success("Kategoria usunięta")
+            st.experimental_rerun()
+
+# ---------- PRODUKTY ----------
 st.header("🛒 Produkty")
 
 with st.form("add_product", clear_on_submit=True):
@@ -61,10 +75,12 @@ products = supabase.table("produkty1") \
 
 st.divider()
 
+# ---------- LISTA PRODUKTÓW ----------
 for p in products:
     with st.expander(f"📦 {p['nazwa']} | stan: {p['liczba']}"):
         col1, col2, col3 = st.columns(3)
 
+        # ===== EDYCJA =====
         with col1:
             st.subheader("✏️ Edycja")
             new_name = st.text_input("Nazwa", p["nazwa"], key=f"name_{p['id']}")
@@ -91,6 +107,7 @@ for p in products:
                 st.success("Zapisano zmiany")
                 st.experimental_rerun()
 
+        # ===== WYDAWANIE =====
         with col2:
             st.subheader("📤 Wydanie towaru")
             wydaj = st.number_input(
@@ -98,16 +115,17 @@ for p in products:
                 min_value=0,
                 max_value=int(p["liczba"]),
                 step=1,
-                key=f"wydaj_{p['id']}"
+                key=f"out_{p['id']}"
             )
 
-            if st.button("📉 Wydaj", key=f"out_{p['id']}") and wydaj > 0:
+            if st.button("📉 Wydaj", key=f"wydaj_{p['id']}") and wydaj > 0:
                 supabase.table("produkty1").update({
                     "liczba": p["liczba"] - wydaj
                 }).eq("id", p["id"]).execute()
                 st.success("Towar wydany")
                 st.experimental_rerun()
 
+        # ===== USUWANIE =====
         with col3:
             st.subheader("🗑 Usuwanie")
             confirm = st.checkbox(
@@ -122,3 +140,4 @@ for p in products:
                     st.experimental_rerun()
                 else:
                     st.error("Musisz zaznaczyć potwierdzenie")
+
