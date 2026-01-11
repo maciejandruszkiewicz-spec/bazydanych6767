@@ -48,7 +48,7 @@ for c in categories:
         else:
             supabase.table("kategoria").delete().eq("id", c["id"]).execute()
             st.success("Kategoria usunięta")
-            st.experimental_rerun()
+            st.rerun()
 
 # ---------- PRODUKTY ----------
 st.header("🛒 Produkty")
@@ -67,6 +67,7 @@ with st.form("add_product", clear_on_submit=True):
             "kategoria_id": cat_name_to_id[cat]
         }).execute()
         st.success("Dodano produkt")
+        st.rerun()
 
 products = supabase.table("produkty1") \
     .select("id,nazwa,cena,liczba,kategoria_id") \
@@ -105,7 +106,7 @@ for p in products:
                     "kategoria_id": cat_name_to_id[new_cat]
                 }).eq("id", p["id"]).execute()
                 st.success("Zapisano zmiany")
-                st.experimental_rerun()
+                st.rerun()
 
         # ===== WYDAWANIE =====
         with col2:
@@ -123,7 +124,7 @@ for p in products:
                     "liczba": p["liczba"] - wydaj
                 }).eq("id", p["id"]).execute()
                 st.success("Towar wydany")
-                st.experimental_rerun()
+                st.rerun()
 
         # ===== USUWANIE =====
         with col3:
@@ -137,7 +138,6 @@ for p in products:
                 if confirm:
                     supabase.table("produkty1").delete().eq("id", p["id"]).execute()
                     st.warning("Produkt usunięty")
-                    st.experimental_rerun()
+                    st.rerun()
                 else:
                     st.error("Musisz zaznaczyć potwierdzenie")
-
