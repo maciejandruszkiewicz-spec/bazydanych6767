@@ -6,7 +6,7 @@ from datetime import datetime
 
 # ---------- CONFIG ----------
 st.set_page_config(
-    page_title="Magazyn Pro v3.1",
+    page_title="Magazyn Szefoski",
     layout="wide",
     page_icon="📦"
 )
