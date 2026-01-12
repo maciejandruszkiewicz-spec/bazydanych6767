@@ -6,7 +6,7 @@ from datetime import datetime
 
 # ---------- CONFIG ----------
 st.set_page_config(
-    page_title="Magazyn Pro v3.0",
+    page_title="Magazyn Pro v3.1",
     layout="wide",
     page_icon="📦"
 )
@@ -22,49 +22,36 @@ supabase = init_connection()
 
 # ---------- FUNKCJA GENEROWANIA PDF ----------
 def generate_receipt(product_name, qty, price):
+    # Prosta funkcja do usuwania polskich znaków, aby uniknąć błędów czcionki w PDF
+    def clean_text(text):
+        mapowanie = {"ą": "a", "ć": "c", "ę": "e", "ł": "l", "ń": "n", "ó": "o", "ś": "s", "ź": "z", "ż": "z",
+                    "Ą": "A", "Ć": "C", "Ę": "E", "Ł": "L", "Ń": "N", "Ó": "O", "Ś": "S", "Ź": "Z", "Ż": "Z"}
+        return "".join(mapowanie.get(c, c) for c in str(text))
+
     pdf = FPDF()
     pdf.add_page()
+    pdf.set_font("Courier", 'B', 16)
     
     # Nagłówek
-    pdf.set_font("Arial", 'B', 16)
-    pdf.cell(200, 10, "POTWIERDZENIE WYDANIA (PARAGON)", ln=True, align='C')
+    pdf.cell(200, 10, clean_text("POTWIERDZENIE WYDANIA"), ln=True, align='C')
     pdf.ln(10)
     
-    # Dane transakcji
-    pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, f"Data wystawienia: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ln=True)
+    # Dane
+    pdf.set_font("Courier", size=12)
+    pdf.cell(200, 10, f"Data: {datetime.now().strftime('%Y-%m-%d %H:%M')}", ln=True)
     pdf.ln(5)
     
     # Tabela
-    pdf.set_fill_color(200, 220, 255)
-    pdf.cell(80, 10, "Produkt", 1, 0, 'C', True)
-    pdf.cell(30, 10, "Ilosc", 1, 0, 'C', True)
-    pdf.cell(40, 10, "Cena jedn.", 1, 0, 'C', True)
-    pdf.cell(40, 10, "Suma", 1, 1, 'C', True)
+    pdf.cell(80, 10, "Produkt", 1)
+    pdf.cell(30, 10, "Ilosc", 1, 0, 'C')
+    pdf.cell(40, 10, "Suma", 1, 1, 'C')
     
     total = qty * price
-    pdf.cell(80, 10, str(product_name), 1)
+    pdf.cell(80, 10, clean_text(product_name), 1)
     pdf.cell(30, 10, str(qty), 1, 0, 'C')
-    pdf.cell(40, 10, f"{price:.2f} zl", 1, 0, 'R')
     pdf.cell(40, 10, f"{total:.2f} zl", 1, 1, 'R')
     
-    pdf.ln(10)
-    pdf.set_font("Arial", 'B', 12)
-    pdf.cell(190, 10, f"RAZEM DO ZAPLATY: {total:.2f} zl", 0, 1, 'R')
-    
     return pdf.output(dest='S').encode('latin-1')
-
-# ---------- STYLE CSS ----------
-st.markdown("""
-    <style>
-    div[data-testid="metric-container"] {
-        background-color: #ffffff;
-        border: 1px solid #e0e0e0;
-        padding: 15px;
-        border-radius: 10px;
-    }
-    </style>
-    """, unsafe_allow_html=True)
 
 # ---------- POBIERANIE DANYCH ----------
 def get_data():
@@ -73,85 +60,65 @@ def get_data():
         products = supabase.table("produkty1").select("*").execute().data or []
         return categories, products
     except Exception as e:
-        st.error(f"Błąd połączenia: {e}")
+        st.error(f"Błąd: {e}")
         return [], []
 
 categories, products = get_data()
-cat_name_to_id = {c["nazwa"]: c["id"] for c in categories}
 cat_id_to_name = {c["id"]: c["nazwa"] for c in categories}
+cat_name_to_id = {c["nazwa"]: c["id"] for c in categories}
 
-# ---------- HEADER & METRYKI ----------
-st.title("📦 Magazyn Pro + System Paragonowy")
+# ---------- DASHBOARD ----------
+st.title("📦 System Magazynowy")
 
 if products:
-    total_qty = sum(p['liczba'] for p in products)
-    total_value = sum(p['liczba'] * p['cena'] for p in products)
-    
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Suma towarów", f"{total_qty} szt.")
-    m2.metric("Wartość", f"{total_value:,.2f} zł")
-    m3.metric("Status", "Aktywny", delta="Połączono")
+    total_val = sum(p['liczba'] * p['cena'] for p in products)
+    st.metric("Wartość całkowita", f"{total_val:,.2f} zł")
 
-st.divider()
+tab1, tab2, tab3 = st.tabs(["📊 Stan", "➕ Dodaj", "🧾 Wydaj i PDF"])
 
-# ---------- ZAKŁADKI ----------
-tab1, tab2, tab3 = st.tabs(["📊 Stan Magazynu", "➕ Dodaj Towar", "🧾 Wydaj i Paragon"])
-
-# --- TAB 1: PRZEGLĄD ---
 with tab1:
     if products:
         df = pd.DataFrame(products)
         df['kategoria'] = df['kategoria_id'].map(cat_id_to_name)
         st.dataframe(df[['nazwa', 'kategoria', 'liczba', 'cena']], use_container_width=True)
-        st.bar_chart(df.set_index('nazwa')['liczba'])
 
-# --- TAB 2: DODAWANIE ---
 with tab2:
-    with st.form("add_form"):
-        col1, col2 = st.columns(2)
-        n = col1.text_input("Nazwa")
-        c = col1.selectbox("Kategoria", list(cat_name_to_id.keys()))
-        q = col2.number_input("Ilość", min_value=0)
-        p = col2.number_input("Cena", min_value=0.0)
-        if st.form_submit_button("Dodaj"):
-            supabase.table("produkty1").insert({"nazwa": n, "kategoria_id": cat_name_to_id[c], "liczba": q, "cena": p}).execute()
+    with st.form("add"):
+        c1, c2 = st.columns(2)
+        nazwa = c1.text_input("Nazwa produktu")
+        kat = c1.selectbox("Kategoria", list(cat_name_to_id.keys()))
+        ilosc = c2.number_input("Ilość", min_value=0)
+        cena = c2.number_input("Cena", min_value=0.0)
+        if st.form_submit_button("Zapisz"):
+            supabase.table("produkty1").insert({"nazwa": nazwa, "kategoria_id": cat_name_to_id[kat], "liczba": ilosc, "cena": cena}).execute()
             st.rerun()
 
-# --- TAB 3: WYDAWANIE I PARAGON ---
 with tab3:
-    st.subheader("Wydawanie towaru z potwierdzeniem PDF")
     if products:
-        prod_dict = {p["nazwa"]: p for p in products}
-        selected_p = st.selectbox("Wybierz produkt do wydania", list(prod_dict.keys()))
+        p_dict = {p["nazwa"]: p for p in products}
+        wybor = st.selectbox("Produkt", list(p_dict.keys()))
+        ile = st.number_input("Ile wydać", min_value=1, max_value=p_dict[wybor]["liczba"])
         
-        col_q, col_btn = st.columns([1, 2])
-        amount = col_q.number_input("Ilość do wydania", min_value=1, max_value=prod_dict[selected_p]["liczba"])
-        
-        # Inicjalizacja stanu dla paragonu
-        if "last_receipt" not in st.session_state:
-            st.session_state.last_receipt = None
+        if "pdf_to_download" not in st.session_state:
+            st.session_state.pdf_to_download = None
 
-        if st.button("📦 Zatwierdź wydanie i przygotuj paragon", use_container_width=True):
-            new_qty = prod_dict[selected_p]["liczba"] - amount
-            supabase.table("produkty1").update({"liczba": new_qty}).eq("id", prod_dict[selected_p]["id"]).execute()
+        if st.button("Wydaj i generuj PDF"):
+            nowa_ilosc = p_dict[wybor]["liczba"] - ile
+            supabase.table("produkty1").update({"liczba": nowa_ilosc}).eq("id", p_dict[wybor]["id"]).execute()
             
-            # Generowanie PDF
-            pdf_bytes = generate_receipt(selected_p, amount, prod_dict[selected_p]["cena"])
-            st.session_state.last_receipt = {
-                "data": pdf_bytes,
-                "name": f"paragon_{selected_p}_{datetime.now().strftime('%H%M%S')}.pdf"
+            # Generowanie
+            pdf_data = generate_receipt(wybor, ile, p_dict[wybor]["cena"])
+            st.session_state.pdf_to_download = {
+                "content": pdf_data,
+                "file": f"potwierdzenie_{wybor}.pdf"
             }
-            st.success(f"Wydano {amount} szt. {selected_p}")
+            st.success("Zaktualizowano stan bazy!")
             st.rerun()
 
-        # Jeśli paragon został wygenerowany przed chwilą, pokaż przycisk pobierania
-        if st.session_state.last_receipt:
-            st.info("Paragon jest gotowy do pobrania:")
+        if st.session_state.pdf_to_download:
             st.download_button(
-                label="📥 Pobierz Paragon (PDF)",
-                data=st.session_state.last_receipt["data"],
-                file_name=st.session_state.last_receipt["name"],
+                "📥 Pobierz ostatni paragon",
+                data=st.session_state.pdf_to_download["content"],
+                file_name=st.session_state.pdf_to_download["file"],
                 mime="application/pdf"
             )
-    else:
-        st.info("Brak produktów w magazynie.")
