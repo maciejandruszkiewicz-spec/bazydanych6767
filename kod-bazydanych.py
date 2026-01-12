@@ -4,7 +4,7 @@ import pandas as pd
 
 # ---------- CONFIG ----------
 st.set_page_config(
-    page_title="Magazyn Pro v2.5",
+    page_title="Magazyn Szefoski",
     layout="wide",
     page_icon="📦"
 )
